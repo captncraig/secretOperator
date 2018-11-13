@@ -27,11 +27,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -67,10 +65,8 @@ type Controller struct {
 	// sampleclientset is a clientset for our own API group
 	sampleclientset clientset.Interface
 
-	secretsLister corelisters.SecretLister
-	secretsSynced cache.InformerSynced
-	foosLister    listers.RandomSecretLister
-	foosSynced    cache.InformerSynced
+	foosLister listers.RandomSecretLister
+	foosSynced cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -87,7 +83,6 @@ type Controller struct {
 func NewController(
 	kubeclientset kubernetes.Interface,
 	sampleclientset clientset.Interface,
-	secretInformer coreinformers.SecretInformer,
 	randSecretInformer informers.RandomSecretInformer) *Controller {
 
 	// Create event broadcaster
@@ -103,8 +98,6 @@ func NewController(
 	controller := &Controller{
 		kubeclientset:   kubeclientset,
 		sampleclientset: sampleclientset,
-		secretsLister:   secretInformer.Lister(),
-		secretsSynced:   secretInformer.Informer().HasSynced,
 		foosLister:      randSecretInformer.Lister(),
 		foosSynced:      randSecretInformer.Informer().HasSynced,
 		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Foos"),
@@ -119,27 +112,6 @@ func NewController(
 			controller.enqueueFoo(new)
 		},
 	})
-	// Set up an event handler for when Deployment resources change. This
-	// handler will lookup the owner of the given Deployment, and if it is
-	// owned by a Foo resource will enqueue that Foo resource for
-	// processing. This way, we don't need to implement custom logic for
-	// handling Deployment resources. More info on this pattern:
-	// https://github.com/kubernetes/community/blob/8cafef897a22026d42f5e5bb3f104febe7e29830/contributors/devel/controllers.md
-	secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.handleObject,
-		UpdateFunc: func(old, new interface{}) {
-			newDepl := new.(*corev1.Secret)
-			oldDepl := old.(*corev1.Secret)
-			if newDepl.ResourceVersion == oldDepl.ResourceVersion {
-				// Periodic resync will send update events for all known Deployments.
-				// Two different versions of the same Deployment will always have different RVs.
-				return
-			}
-			controller.handleObject(new)
-		},
-		DeleteFunc: controller.handleObject,
-	})
-
 	return controller
 }
 
@@ -156,7 +128,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 
 	// Wait for the caches to be synced before starting workers
 	glog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.secretsSynced, c.foosSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.foosSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -240,22 +212,23 @@ func (c *Controller) processNextWorkItem() bool {
 // converge the two. It then updates the Status block of the Foo resource
 // with the current status of the resource.
 func (c *Controller) syncHandler(key string) error {
-	// // Convert the namespace/name string into a distinct namespace and name
-	// namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	// if err != nil {
-	// 	runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-	// 	return nil
-	// }
+	// Convert the namespace/name string into a distinct namespace and name
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
 
-	// // Get the Foo resource with this namespace/name
-	// foo, err := c.foosLister.Foos(namespace).Get(name)
-	// if err != nil {
-	// 	// The Foo resource may no longer exist, in which case we stop
-	// 	// processing.
-	// 	if errors.IsNotFound(err) {
-	// 		runtime.HandleError(fmt.Errorf("foo '%s' in work queue no longer exists", key))
-	// 		return nil
-	// 	}
+	// Get the Foo resource with this namespace/name
+	rs, err := c.foosLister.RandomSecrets(namespace).Get(name)
+	if err != nil {
+		// 	// The Foo resource may no longer exist, in which case we stop
+		// 	// processing.
+		// 	if errors.IsNotFound(err) {
+		// 		runtime.HandleError(fmt.Errorf("foo '%s' in work queue no longer exists", key))
+		return err
+	}
+	fmt.Println(rs.Spec, *rs.Spec.Length)
 
 	// 	return err
 	// }
