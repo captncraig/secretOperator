@@ -228,7 +228,7 @@ func (c *Controller) syncHandler(key string) error {
 		// 		runtime.HandleError(fmt.Errorf("foo '%s' in work queue no longer exists", key))
 		return err
 	}
-	fmt.Println(rs.Spec, *rs.Spec.Length)
+	fmt.Println(rs.Spec, len(rs.Spec.Keys))
 
 	// 	return err
 	// }

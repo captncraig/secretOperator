@@ -33,11 +33,15 @@ type RandomSecret struct {
 
 // FooSpec is the spec for a Foo resource
 type RandomSecretSpec struct {
-	Mode string `json:"mode"`
+	Keys []RandomSecretKey `json:"keys"`
+}
 
-	Length   *int32   `json:"length"`
-	Alphabet string   `json:"alphabet"`
-	Keys     []string `json:"keys"`
+type RandomSecretKey struct {
+	Name     string `json:"Name"`
+	Mode     string `json:"mode"` //text or binary
+	Length   int32  `json:"length"`
+	Alphabet string `json:"alphabet"`
+	RegenKey string `json:"regenKey"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
