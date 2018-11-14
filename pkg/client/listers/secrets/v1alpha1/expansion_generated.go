@@ -25,3 +25,11 @@ type RandomSecretListerExpansion interface{}
 // RandomSecretNamespaceListerExpansion allows custom methods to be added to
 // RandomSecretNamespaceLister.
 type RandomSecretNamespaceListerExpansion interface{}
+
+// VaultSecretListerExpansion allows custom methods to be added to
+// VaultSecretLister.
+type VaultSecretListerExpansion interface{}
+
+// VaultSecretNamespaceListerExpansion allows custom methods to be added to
+// VaultSecretNamespaceLister.
+type VaultSecretNamespaceListerExpansion interface{}

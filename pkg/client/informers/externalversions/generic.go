@@ -55,6 +55,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	// Group=secrets.k8s.captncraig.io, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("randomsecrets"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Secrets().V1alpha1().RandomSecrets().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("vaultsecrets"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Secrets().V1alpha1().VaultSecrets().Informer()}, nil
 
 	}
 

@@ -32,6 +32,10 @@ func (c *FakeSecretsV1alpha1) RandomSecrets(namespace string) v1alpha1.RandomSec
 	return &FakeRandomSecrets{c, namespace}
 }
 
+func (c *FakeSecretsV1alpha1) VaultSecrets(namespace string) v1alpha1.VaultSecretInterface {
+	return &FakeVaultSecrets{c, namespace}
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeSecretsV1alpha1) RESTClient() rest.Interface {

@@ -53,3 +53,35 @@ type RandomSecretList struct {
 
 	Items []RandomSecret `json:"items"`
 }
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// VaultSecret is a secret copied from vault
+type VaultSecret struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec VaultSecretSpec `json:"spec"`
+}
+
+type VaultSecretSpec struct {
+	Path string          `json:"path"`
+	Mode string          `json:"mode"` //v1 or v2 for kv stores
+	Auth VaultSecretAuth `json:"auth"`
+}
+
+type VaultSecretAuth struct {
+	Role           string `json:"role"`
+	ServiceAccount string `json:"serviceAccount"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// VaultSecretList is a list of VaultSecret resources
+type VaultSecretList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []VaultSecret `json:"items"`
+}

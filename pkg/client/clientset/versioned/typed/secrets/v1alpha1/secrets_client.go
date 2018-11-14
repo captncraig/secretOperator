@@ -28,6 +28,7 @@ import (
 type SecretsV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	RandomSecretsGetter
+	VaultSecretsGetter
 }
 
 // SecretsV1alpha1Client is used to interact with features provided by the secrets.k8s.captncraig.io group.
@@ -37,6 +38,10 @@ type SecretsV1alpha1Client struct {
 
 func (c *SecretsV1alpha1Client) RandomSecrets(namespace string) RandomSecretInterface {
 	return newRandomSecrets(c, namespace)
+}
+
+func (c *SecretsV1alpha1Client) VaultSecrets(namespace string) VaultSecretInterface {
+	return newVaultSecrets(c, namespace)
 }
 
 // NewForConfig creates a new SecretsV1alpha1Client for the given config.

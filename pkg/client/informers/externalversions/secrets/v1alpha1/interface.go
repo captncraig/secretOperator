@@ -26,6 +26,8 @@ import (
 type Interface interface {
 	// RandomSecrets returns a RandomSecretInformer.
 	RandomSecrets() RandomSecretInformer
+	// VaultSecrets returns a VaultSecretInformer.
+	VaultSecrets() VaultSecretInformer
 }
 
 type version struct {
@@ -42,4 +44,9 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // RandomSecrets returns a RandomSecretInformer.
 func (v *version) RandomSecrets() RandomSecretInformer {
 	return &randomSecretInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// VaultSecrets returns a VaultSecretInformer.
+func (v *version) VaultSecrets() VaultSecretInformer {
+	return &vaultSecretInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
