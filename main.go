@@ -30,6 +30,7 @@ import (
 	clientset "github.com/captncraig/secretOperator/pkg/client/clientset/versioned"
 	informers "github.com/captncraig/secretOperator/pkg/client/informers/externalversions"
 	"github.com/captncraig/secretOperator/pkg/signals"
+	kubeinformers "k8s.io/client-go/informers"
 )
 
 var (
@@ -58,12 +59,16 @@ func main() {
 		glog.Fatalf("Error building secret clientset: %s", err.Error())
 	}
 
-	secretInformerFactory := informers.NewSharedInformerFactory(secretClient, time.Second*30)
+	secretInformerFactory := informers.NewSharedInformerFactory(secretClient, time.Second*60)
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*60)
 
 	controller := NewController(kubeClient, secretClient,
-		secretInformerFactory.Secrets().V1alpha1().RandomSecrets())
+		secretInformerFactory.Secrets().V1alpha1().RandomSecrets(),
+		kubeInformerFactory.Core().V1().Secrets(),
+	)
 
 	secretInformerFactory.Start(stopCh)
+	kubeInformerFactory.Start(stopCh)
 
 	if err = controller.Run(2, stopCh); err != nil {
 		glog.Fatalf("Error running controller: %s", err.Error())

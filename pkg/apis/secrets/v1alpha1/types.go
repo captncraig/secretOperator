@@ -17,6 +17,10 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -37,11 +41,30 @@ type RandomSecretSpec struct {
 }
 
 type RandomSecretKey struct {
-	Name     string `json:"Name"`
-	Mode     string `json:"mode"` //text or binary
+	Name     string `json:"name"`
+	Mode     string `json:"mode"` // "text" or "binary"
 	Length   int32  `json:"length"`
-	Alphabet string `json:"alphabet"`
 	RegenKey string `json:"regenKey"`
+
+	Alphabet string `json:"alphabet"` // text only
+	Encoding string `json:"encoding"` // binary only. "hex" or "base64"
+}
+
+// important that all fields are represented here. Order matters.
+func (key *RandomSecretKey) Hash() string {
+	s := sha1.New()
+	fmt.Fprint(s, key.Mode)
+	fmt.Fprint(s, key.RegenKey)
+	fmt.Fprint(s, key.Length)
+
+	if key.Mode == "binary" {
+		fmt.Fprint(s, key.Encoding)
+	} else if key.Mode == "text" {
+		fmt.Fprint(s, key.Alphabet)
+	}
+
+	d := s.Sum(nil)
+	return hex.EncodeToString(d)
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
