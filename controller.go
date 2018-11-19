@@ -18,11 +18,11 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -50,10 +50,14 @@ type Controller struct {
 	randSecLister  listers.RandomSecretLister
 	randSecsSynced cache.InformerSynced
 
+	vaultSecLister  listers.VaultSecretLister
+	vaultSecsSynced cache.InformerSynced
+
 	secretLister  corelisters.SecretLister
 	secretsSynced cache.InformerSynced
 
 	workqueue workqueue.RateLimitingInterface
+
 	// recorder is an event recorder for recording Event resources to the
 	// Kubernetes API.
 	recorder record.EventRecorder
@@ -64,6 +68,7 @@ func NewController(
 	kubeclientset kubernetes.Interface,
 	crdClientset clientset.Interface,
 	randSecretInformer informers.RandomSecretInformer,
+	vaultSecretInformer informers.VaultSecretInformer,
 	secretInformer coreinformers.SecretInformer,
 ) *Controller {
 
@@ -78,23 +83,31 @@ func NewController(
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
 	controller := &Controller{
-		kubeclientset:  kubeclientset,
-		crdClientset:   crdClientset,
-		randSecLister:  randSecretInformer.Lister(),
-		randSecsSynced: randSecretInformer.Informer().HasSynced,
+		kubeclientset:   kubeclientset,
+		crdClientset:    crdClientset,
+		randSecLister:   randSecretInformer.Lister(),
+		randSecsSynced:  randSecretInformer.Informer().HasSynced,
+		vaultSecLister:  vaultSecretInformer.Lister(),
+		vaultSecsSynced: vaultSecretInformer.Informer().HasSynced,
 
 		secretLister:  secretInformer.Lister(),
 		secretsSynced: secretInformer.Informer().HasSynced,
-		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "RandomSecrets"),
+		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SecretsQueue"),
 		recorder:      recorder,
 	}
 
 	glog.Info("Setting up event handlers")
-	// Set up an event handler for when Foo resources change
 	randSecretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueRand,
 		UpdateFunc: func(old, new interface{}) {
 			controller.enqueueRand(new)
+		},
+	})
+
+	vaultSecretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.enqueueVault,
+		UpdateFunc: func(old, new interface{}) {
+			controller.enqueueVault(new)
 		},
 	})
 	return controller
@@ -119,9 +132,11 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	if ok := cache.WaitForCacheSync(stopCh, c.secretsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
+	if ok := cache.WaitForCacheSync(stopCh, c.vaultSecsSynced); !ok {
+		return fmt.Errorf("failed to wait for caches to sync")
+	}
 
 	glog.Info("Starting workers")
-	// Launch two workers to process Foo resources
 	for i := 0; i < threadiness; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
@@ -147,6 +162,7 @@ func (c *Controller) processNextWorkItem() bool {
 	if shutdown {
 		return false
 	}
+
 	err := func(obj interface{}) error {
 		defer c.workqueue.Done(obj)
 		defer c.workqueue.Forget(obj)
@@ -157,10 +173,21 @@ func (c *Controller) processNextWorkItem() bool {
 			runtime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.syncRandom(key); err != nil {
-			return fmt.Errorf("error syncing random secret'%s': %s.", key, err.Error())
+		parts := strings.SplitN(key, "|", 2)
+		typ, key := parts[0], parts[1]
+		switch typ {
+		case "random":
+			if err := c.syncRandom(key); err != nil {
+				return fmt.Errorf("error syncing random secret '%s': %s.", key, err.Error())
+			}
+		case "vault":
+			if err := c.syncVault(key); err != nil {
+				return fmt.Errorf("error syncing vault secret '%s': %s.", key, err.Error())
+			}
+		default:
+			return fmt.Errorf("Invalid queue item type %s", typ)
 		}
-		glog.Infof("Successfully synced '%s'", key)
+		glog.Infof("Successfully synced %s secret '%s'", typ, key)
 		return nil
 	}(obj)
 
@@ -172,9 +199,6 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-// enqueueFoo takes a Foo resource and converts it into a namespace/name
-// string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than Foo.
 func (c *Controller) enqueueRand(obj interface{}) {
 	var key string
 	var err error
@@ -182,48 +206,15 @@ func (c *Controller) enqueueRand(obj interface{}) {
 		runtime.HandleError(err)
 		return
 	}
-	c.workqueue.AddRateLimited(key)
+	c.workqueue.AddRateLimited("random|" + key)
 }
 
-// handleObject will take any resource implementing metav1.Object and attempt
-// to find the Foo resource that 'owns' it. It does this by looking at the
-// objects metadata.ownerReferences field for an appropriate OwnerReference.
-// It then enqueues that Foo resource to be processed. If the object does not
-// have an appropriate OwnerReference, it will simply be skipped.
-func (c *Controller) handleObject(obj interface{}) {
-	var object metav1.Object
-	var ok bool
-	if object, ok = obj.(metav1.Object); ok {
-		fmt.Println(object.GetName())
+func (c *Controller) enqueueVault(obj interface{}) {
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
+		runtime.HandleError(err)
+		return
 	}
-	// if object, ok = obj.(metav1.Object); !ok {
-	// 	tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-	// 	if !ok {
-	// 		runtime.HandleError(fmt.Errorf("error decoding object, invalid type"))
-	// 		return
-	// 	}
-	// 	object, ok = tombstone.Obj.(metav1.Object)
-	// 	if !ok {
-	// 		runtime.HandleError(fmt.Errorf("error decoding object tombstone, invalid type"))
-	// 		return
-	// 	}
-	// 	glog.V(4).Infof("Recovered deleted object '%s' from tombstone", object.GetName())
-	// }
-	// glog.V(4).Infof("Processing object: %s", object.GetName())
-	// if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
-	// 	// If this object is not owned by a Foo, we should not do anything more
-	// 	// with it.
-	// 	if ownerRef.Kind != "Foo" {
-	// 		return
-	// 	}
-
-	// 	foo, err := c.foosLister.Foos(object.GetNamespace()).Get(ownerRef.Name)
-	// 	if err != nil {
-	// 		glog.V(4).Infof("ignoring orphaned object '%s' of foo '%s'", object.GetSelfLink(), ownerRef.Name)
-	// 		return
-	// 	}
-
-	// 	c.enqueueFoo(foo)
-	// 	return
-	// }
+	c.workqueue.AddRateLimited("vault|" + key)
 }

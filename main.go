@@ -64,6 +64,7 @@ func main() {
 
 	controller := NewController(kubeClient, secretClient,
 		secretInformerFactory.Secrets().V1alpha1().RandomSecrets(),
+		secretInformerFactory.Secrets().V1alpha1().VaultSecrets(),
 		kubeInformerFactory.Core().V1().Secrets(),
 	)
 
