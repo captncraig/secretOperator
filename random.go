@@ -40,7 +40,7 @@ func (c *Controller) syncRandom(key string) error {
 	// TODO: fully validate keys and such
 
 	// Find matching Secret
-	sec, err := c.secretLister.Secrets(namespace).Get(name)
+	sec, err := c.kubeclientset.CoreV1().Secrets(namespace).Get(name, metav1.GetOptions{})
 	if err != nil && errors.IsNotFound(err) {
 		glog.Infof("Secret %s/%s not found. Generating", namespace, name)
 		sec, err = c.generateRandomSecret(rsec)

@@ -26,11 +26,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -53,9 +51,6 @@ type Controller struct {
 	vaultSecLister  listers.VaultSecretLister
 	vaultSecsSynced cache.InformerSynced
 
-	secretLister  corelisters.SecretLister
-	secretsSynced cache.InformerSynced
-
 	workqueue workqueue.RateLimitingInterface
 
 	// recorder is an event recorder for recording Event resources to the
@@ -69,7 +64,6 @@ func NewController(
 	crdClientset clientset.Interface,
 	randSecretInformer informers.RandomSecretInformer,
 	vaultSecretInformer informers.VaultSecretInformer,
-	secretInformer coreinformers.SecretInformer,
 ) *Controller {
 
 	// Create event broadcaster
@@ -90,10 +84,8 @@ func NewController(
 		vaultSecLister:  vaultSecretInformer.Lister(),
 		vaultSecsSynced: vaultSecretInformer.Informer().HasSynced,
 
-		secretLister:  secretInformer.Lister(),
-		secretsSynced: secretInformer.Informer().HasSynced,
-		workqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SecretsQueue"),
-		recorder:      recorder,
+		workqueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SecretsQueue"),
+		recorder:  recorder,
 	}
 
 	glog.Info("Setting up event handlers")
@@ -127,9 +119,6 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	// Wait for the caches to be synced before starting workers
 	glog.Info("Waiting for informer caches to sync")
 	if ok := cache.WaitForCacheSync(stopCh, c.randSecsSynced); !ok {
-		return fmt.Errorf("failed to wait for caches to sync")
-	}
-	if ok := cache.WaitForCacheSync(stopCh, c.secretsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 	if ok := cache.WaitForCacheSync(stopCh, c.vaultSecsSynced); !ok {
@@ -178,11 +167,11 @@ func (c *Controller) processNextWorkItem() bool {
 		switch typ {
 		case "random":
 			if err := c.syncRandom(key); err != nil {
-				return fmt.Errorf("error syncing random secret '%s': %s.", key, err.Error())
+				return fmt.Errorf("error syncing random secret '%s': %s", key, err.Error())
 			}
 		case "vault":
 			if err := c.syncVault(key); err != nil {
-				return fmt.Errorf("error syncing vault secret '%s': %s.", key, err.Error())
+				return fmt.Errorf("error syncing vault secret '%s': %s", key, err.Error())
 			}
 		default:
 			return fmt.Errorf("Invalid queue item type %s", typ)

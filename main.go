@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"os"
 	"time"
 
 	"github.com/golang/glog"
@@ -30,21 +31,16 @@ import (
 	clientset "github.com/captncraig/secretOperator/pkg/client/clientset/versioned"
 	informers "github.com/captncraig/secretOperator/pkg/client/informers/externalversions"
 	"github.com/captncraig/secretOperator/pkg/signals"
-	kubeinformers "k8s.io/client-go/informers"
-)
-
-var (
-	masterURL  string
-	kubeconfig string
 )
 
 func main() {
 	flag.Parse()
+	glog.Info("Starting up")
 
 	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()
 
-	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+	cfg, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
 	if err != nil {
 		glog.Fatalf("Error building kubeconfig: %s", err.Error())
 	}
@@ -60,23 +56,15 @@ func main() {
 	}
 
 	secretInformerFactory := informers.NewSharedInformerFactory(secretClient, time.Second*60)
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*60)
 
 	controller := NewController(kubeClient, secretClient,
 		secretInformerFactory.Secrets().V1alpha1().RandomSecrets(),
 		secretInformerFactory.Secrets().V1alpha1().VaultSecrets(),
-		kubeInformerFactory.Core().V1().Secrets(),
 	)
 
 	secretInformerFactory.Start(stopCh)
-	kubeInformerFactory.Start(stopCh)
 
 	if err = controller.Run(2, stopCh); err != nil {
 		glog.Fatalf("Error running controller: %s", err.Error())
 	}
-}
-
-func init() {
-	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
-	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 }
