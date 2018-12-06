@@ -8,5 +8,6 @@ RUN go install
 
 FROM alpine:3.7
 WORKDIR /root/
+RUN apk add --no-cache ca-certificates
 COPY --from=0 /go/bin/secretOperator .
 CMD ["/root/secretOperator", "-alsologtostderr"]
