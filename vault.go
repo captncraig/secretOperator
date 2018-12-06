@@ -150,6 +150,7 @@ func (c *Controller) getVaultClient(namespace string, svcAccount string, role st
 			return nil, err
 		}
 		jwt = string(dat)
+		role = defaultVaultRole
 	} else {
 		svc, err := c.kubeclientset.CoreV1().ServiceAccounts(namespace).Get(svcAccount, metav1.GetOptions{})
 		if err != nil {
