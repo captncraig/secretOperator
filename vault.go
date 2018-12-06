@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -113,9 +114,19 @@ func (c *Controller) syncVault(key string) error {
 }
 
 var vaultBackend = os.Getenv("VAULT_AUTH_BACKEND")
+var defaultVaultRole = os.Getenv("DEFAULT_VAULT_ROLE")
 
 func (c *Controller) getVaultClient(namespace string, svcAccount string, role string) (*api.Client, error) {
 	cacheKey := fmt.Sprintf("%s/%s-%s", namespace, svcAccount, role)
+
+	if svcAccount == "" && role == "" {
+		if defaultVaultRole != "" {
+			cacheKey = "default"
+		} else {
+			return nil, fmt.Errorf("VaultSecret does not specify a service account, and no default role is specified for the operator. Cannot authenticate to vault")
+		}
+	}
+
 	var client *api.Client
 
 	// check cache
@@ -131,25 +142,34 @@ func (c *Controller) getVaultClient(namespace string, svcAccount string, role st
 	}
 
 	// read svc account token
-	svc, err := c.kubeclientset.CoreV1().ServiceAccounts(namespace).Get(svcAccount, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
 	jwt := ""
-	for _, sec := range svc.Secrets {
-		if strings.Contains(sec.Name, "-token-") {
-			tsec, err := c.kubeclientset.CoreV1().Secrets(namespace).Get(sec.Name, metav1.GetOptions{})
-			if err != nil {
-				return nil, err
+	var err error
+	if cacheKey == "default" {
+		dat, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+		if err != nil {
+			return nil, err
+		}
+		jwt = string(dat)
+	} else {
+		svc, err := c.kubeclientset.CoreV1().ServiceAccounts(namespace).Get(svcAccount, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		for _, sec := range svc.Secrets {
+			if strings.Contains(sec.Name, "-token-") {
+				tsec, err := c.kubeclientset.CoreV1().Secrets(namespace).Get(sec.Name, metav1.GetOptions{})
+				if err != nil {
+					return nil, err
+				}
+				jwt = string(tsec.Data["token"])
 			}
-			jwt = string(tsec.Data["token"])
+		}
+		if jwt == "" {
+			return nil, fmt.Errorf("couldn't identify jwt token for service account %s", svcAccount)
 		}
 	}
-	if jwt == "" {
-		return nil, fmt.Errorf("couldn't identify jwt token for service account %s", svcAccount)
-	}
 
-	// base client config
+	// base vault client config
 	conf := api.DefaultConfig()
 	if err := conf.ReadEnvironment(); err != nil {
 		return nil, fmt.Errorf("Error creating vault config from environment: %s", err)

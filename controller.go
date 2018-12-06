@@ -176,7 +176,7 @@ func (c *Controller) processNextWorkItem() bool {
 		default:
 			return fmt.Errorf("Invalid queue item type %s", typ)
 		}
-		glog.Infof("Successfully synced %s secret '%s'", typ, key)
+		//glog.Infof("Successfully synced %s secret '%s'", typ, key)
 		return nil
 	}(obj)
 
